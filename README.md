@@ -19,6 +19,7 @@ and confirms your Colab account works. Doing it early is the whole point of it.
 | 1 | [AI Models](src/day1-models/) | Output distributions, instruction hierarchies |
 | 2 | [Control](src/day2-control/) | Harm classifier lab, control hackathon |
 | 3 | [Open Weight Security](src/day3-weights/) | Abliteration, backdoors, distillation |
+| 4 | [Verification](src/day4-verification/) | Auditing a claim about a computation you didn't run |
 
 The programme itself runs five days; this repo holds the hands-on material: the labs and the
 control hackathon. Each day's README lists that day in running order.
