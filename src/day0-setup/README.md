@@ -1,5 +1,7 @@
 # Day 0: Setup & Environment
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sg-ai-safety-hub/FAST/blob/main/src/day0-setup/smoke_test.ipynb)
+
 Do this before Day 1 starts, not during it.
 
 1. Sign in to Colab with the Google account you were issued for the program.

@@ -2,6 +2,8 @@
 
 **Day 1 · 1h30 · Lab · GPU optional (a 0.5B model runs on CPU in a couple of minutes)**
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sg-ai-safety-hub/FAST/blob/main/src/day1-models/instruction-hierarchy/lab.ipynb)
+
 ## Objective
 
 Treat instruction-following and refusal as properties of the prompt string rather than fixed

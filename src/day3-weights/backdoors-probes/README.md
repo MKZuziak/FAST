@@ -2,6 +2,8 @@
 
 **Day 3 · 75 min · Lab · GPU not needed (the model is tiny)**
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sg-ai-safety-hub/FAST/blob/main/src/day3-weights/backdoors-probes/lab.ipynb)
+
 ## Objective
 
 Plant a backdoor in a model by poisoning its training data, confirm that ordinary behavioural

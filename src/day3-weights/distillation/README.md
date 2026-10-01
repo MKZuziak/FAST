@@ -2,6 +2,8 @@
 
 **Day 3 · 75 min · Lab · GPU recommended (a 0.5B teacher and a small student fit a T4)**
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sg-ai-safety-hub/FAST/blob/main/src/day3-weights/distillation/lab.ipynb)
+
 ## Objective
 
 Train a small student model to reproduce a larger teacher, two ways: white-box from the teacher's

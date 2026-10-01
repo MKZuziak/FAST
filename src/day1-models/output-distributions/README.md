@@ -2,6 +2,8 @@
 
 **Day 1 · 1h30 · Lab · GPU optional (a 0.5B model runs on CPU in a couple of minutes)**
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sg-ai-safety-hub/FAST/blob/main/src/day1-models/output-distributions/lab.ipynb)
+
 ## Objective
 
 Read a model as what it is: a probability distribution over the next token that something samples

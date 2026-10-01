@@ -2,6 +2,8 @@
 
 **Day 3 · 75 min · Lab · GPU recommended (a 0.5B model fits a T4)**
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sg-ai-safety-hub/FAST/blob/main/src/day3-weights/abliteration/lab.ipynb)
+
 ## Objective
 
 Remove a safety-tuned model's refusal behaviour by finding the single direction in its residual
