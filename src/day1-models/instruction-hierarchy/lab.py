@@ -562,12 +562,18 @@ print(f"robust_scan        : {robust_scan(doc, lab.INJECTION_CUES)}")
 # question to ask of any deployment is who controls that string, and the answer changes with the
 # surface:
 #
-# | Surface | Who writes the assistant turn's opening tokens | Prefill available? |
+# | Surface | Can you put text in the assistant turn before the model writes? | Prefill available? |
 # | --- | --- | --- |
-# | Hosted chat UI | the provider | no |
-# | Most inference APIs | the provider, from your messages | no |
-# | APIs that expose it deliberately | you | yes, by design |
-# | Open weights | you | always, and not removable |
+# | Hosted chat UI | no, the model starts from an empty turn | no |
+# | Most inference APIs | no, the provider builds the prompt from your messages | no |
+# | APIs that expose it deliberately | yes, optionally: end your messages with a partial assistant message | yes, by design |
+# | Open weights | yes, always: you run inference and build the token sequence yourself | always, and not removable |
+#
+# For hosted models, "no prefill" is a policy enforced by the provider's server, sitting between
+# you and the model. With open weights there is no such layer: the model only sees a sequence of
+# tokens, the chat template is a formatting convention you apply yourself, and nothing in the
+# weights records who wrote which tokens. That is why prefill can't be taken away from someone who
+# holds the weights.
 #
 # Any safety behaviour you observe by chatting with a hosted model belongs to the top two rows,
 # where the provider controls the prompt and prefill isn't on the table. The bottom row is the same
