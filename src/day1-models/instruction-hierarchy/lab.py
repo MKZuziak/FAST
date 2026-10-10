@@ -59,6 +59,66 @@ def sequence_logprob(model, tokenizer, prompt: str, completion: str) -> float:
 
 
 # %% [markdown]
+# ### For those who want to know more: what the scorer computes
+#
+# **What `prompt` and `completion` mean here.** The `prompt` is the full rendered chat up to the
+# point where the assistant starts replying: system message, user turn, any documents, and the
+# assistant turn opened but empty. It is everything the model sees before answering. The
+# `completion` is a candidate reply that *you supply*, not one the model generated. In normal use
+# the model samples a reply one token at a time. Here you hand it a specific string, such as a
+# refusal or a compliant answer, and ask how likely it would have been to produce exactly that. This
+# turns generation into measurement: to learn which way the model leans, you score the two replies
+# you care about and compare them, with no sampling needed.
+#
+# **The maths.** Write the prompt tokens as $x_{1:m}$ and the completion tokens as $y_{1:n}$. The
+# model gives a next-token distribution $p_\theta(\cdot \mid \text{prefix})$, and the function
+# returns
+#
+# $$
+# \texttt{sequence\_logprob}(x, y) \;=\; \sum_{t=1}^{n} \log p_\theta\big(y_t \mid x,\, y_{<t}\big)
+# \;=\; \log p_\theta(y \mid x)
+# $$
+#
+# The second equality is the chain rule: $p_\theta(y \mid x) = \prod_t p_\theta(y_t \mid x,
+# y_{<t})$, and taking logs turns the product into a sum. The result is the log of the probability
+# that the model, given the prompt, emits exactly this string. It is always $\le 0$, in nats.
+#
+# How the code gets there:
+#
+# - **One forward pass.** Prompt and completion are concatenated and run through the model once.
+#   Causal masking means the logits at position $i$ depend only on tokens $\le i$, so feeding in the
+#   true completion gives every conditional $p_\theta(y_t \mid \dots)$ at once (*teacher forcing*).
+# - **Shift by one.** Position $i$ predicts token $i+1$, so `logits[:, :-1]` is paired with `ids[:,
+#   1:]`. The last position has nothing to predict and is dropped.
+# - **Gather, then slice.** `log_softmax` turns logits into log-probabilities, `gather` picks the
+#   one for the token that actually followed, and `[-n:]` keeps only the completion's terms. The
+#   prompt is conditioned on but not scored.
+#
+# Two things to keep in mind when you use it:
+#
+# 1. **The total is not length-normalised.** Every extra token adds a term $\le 0$, so longer
+#    completions score lower regardless of content. When comparing completions of different lengths,
+#    divide by $n$. That gives $\frac{1}{n}\sum_t \log p_\theta(y_t \mid \dots)$, the log of the
+#    geometric-mean token probability. Parts 1 and 2 both do this.
+# 2. **Comparing two completions is a difference of scores.** For $y_A$ versus $y_B$ under the same
+#    prompt, the difference of the two totals is the log-odds
+#
+#    $$\log\frac{p_\theta(y_A \mid x)}{p_\theta(y_B \mid x)}$$
+#
+#    but the two replies in Part 1 can differ in length, so the margin there is the difference of
+#    the per-token means instead:
+#
+#    $$\text{margin} = \frac{1}{n_A}\log p_\theta(y_A \mid x) - \frac{1}{n_B}\log p_\theta(y_B \mid x)$$
+#
+#    A positive margin means the model leans towards $y_A$. This is what Part 1 uses to measure
+#    which channel's instruction wins.
+#
+# The prompt and completion are tokenized separately, so the score is for this exact token sequence.
+# It can differ slightly from the joint tokenization of the concatenated string, for example around
+# a leading space.
+
+
+# %% [markdown]
 # ## Part 1: where does an instruction have to sit to be obeyed?
 #
 # A chat prompt is split into *roles*: a system message (standing instructions from the app), the
