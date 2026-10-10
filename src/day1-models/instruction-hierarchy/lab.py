@@ -488,6 +488,9 @@ for line in scan_for_injection(retrieved):
 # The fix is to stop matching on the raw text and match on a *normalised* copy instead: fold all
 # of those tricks back to plain lowercase letters first, then look for the cues. This is the real
 # work of an input filter, and writing it is also how you feel where it still loses.
+#
+# `robust_scan` takes the cues as an argument. The cells below pass in `lab.INJECTION_CUES`, a
+# ready-made list of trigger phrases like the one you wrote for Part 3.
 
 # %%
 import unicodedata
