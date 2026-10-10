@@ -237,9 +237,15 @@ ids = tokenizer(rendered, return_tensors="pt").input_ids
 print(f"{len(rendered)} characters  ->  token ids of shape {tuple(ids.shape)}  (batch, positions)")
 
 # %% [markdown]
-# Now measure. Each case has one reply that obeys the instruction and one that ignores it. The
-# margin between their scores (the difference between the two log-probabilities) says which way
-# the model leans, per channel.
+# Now measure. Each case has one reply that obeys the instruction and one that ignores it. For
+# each channel, the margin is the per-token mean log-probability of the obeying reply minus that of
+# the ignoring reply, so a positive margin means the model leans towards obeying. The table has one
+# row per case and one column per channel.
+#
+# If your `conflict_prompt` is wrong, it usually shows up here: a placement that isn't actually
+# moving the instruction gives a column identical to another one, or margins that make no sense
+# across all cases. The check above catches most of this, but a glance at the table is a good
+# second test.
 
 # %%
 results = lab.run_hierarchy(model, tokenizer, conflict_prompt, sequence_logprob)
@@ -251,16 +257,21 @@ results = lab.run_hierarchy(model, tokenizer, conflict_prompt, sequence_logprob)
 # gaps that can invert between cases: the same instruction sitting in the user turn or a retrieved
 # document rivalling, or beating, the system prompt.
 #
-# The hierarchy is a preference
-# learned in post-training, and a small, older instruction-tuned model carries only a faint version
-# of it; meanwhile *position* matters, and an instruction sitting next to the task (user, document)
-# has an edge over one parked far away up in the system prompt. At this scale position is often
-# enough to swamp the trained ranking. It sharpens with scale: a modern few-billion-parameter model
-# shows a clean system > user > document ordering, because its hierarchy is finally strong enough to
-# dominate position.
+# The hierarchy is a preference learned in post-training, and a small, older instruction-tuned
+# model carries only a faint version of it. One plausible reason the ranking is muddy is
+# *position*: an instruction sitting next to the task (user, document) may have an edge over one
+# parked far away up in the system prompt. This lab doesn't separate position from role, so treat
+# that as a hypothesis, not a result. Larger models trained explicitly on the hierarchy are
+# reported to follow it much more reliably ([Wallace et al., 2024](https://arxiv.org/abs/2404.13208)),
+# which a 0.5B model can't show here, so read that as the expected trend, not something measured.
 #
-# The security reading survives either way, and the weak-model result only sharpens it: a retrieved
-# document carries a real fraction of the system prompt's authority.
+# The security reading survives either way. In the table above the document column is positive in
+# every case and close to the user column, and for the French instruction it is clearly stronger
+# than the system column: text dressed as retrieved content can pull the model about as hard as a
+# user's own request, which is all an attacker needs. One caveat on the setup: here the "document"
+# is tagged text inside the user turn, a simplification. Some chat templates give tool results
+# their own role, and real products differ, so this measures how much authority document-shaped
+# text carries, not how a particular system treats retrieved content.
 #
 # That gap, between "supposed to be ignored" and "still has some pull", is what makes *indirect
 # prompt injection* work. An attacker plants instructions in something the model will later read (a
@@ -274,7 +285,9 @@ results = lab.run_hierarchy(model, tokenizer, conflict_prompt, sequence_logprob)
 #
 # Worth a minute if you have it: does the margin move if the document claims the instruction came
 # from the system administrator? If it does, the model is going on the words themselves, not on
-# which channel they actually arrived through.
+# which channel they actually arrived through. `run_hierarchy` only scores its built-in cases, but
+# you can test your own with the same pieces: `conflict_prompt(...)` builds the prompt and
+# `sequence_logprob(...)` scores a reply.
 
 # %% [markdown]
 # ## Part 2: prefill
