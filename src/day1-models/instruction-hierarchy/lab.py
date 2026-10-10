@@ -301,18 +301,45 @@ results = lab.run_hierarchy(model, tokenizer, conflict_prompt, sequence_logprob)
 # turn](https://docs.claude.com/en/docs/build-with-claude/prompt-engineering/prefill-claudes-response)
 # for output control), and anyone holding the weights has it unconditionally. Same mechanics as
 # Part 1, one step further: render the chat, then append.
+#
+# For the system message "You are a helpful assistant." and the user message "Say hello.", the
+# ordinary prompt ends with the assistant turn opened and empty:
+#
+# ```
+# <|im_start|>system
+# You are a helpful assistant.<|im_end|>
+# <|im_start|>user
+# Say hello.<|im_end|>
+# <|im_start|>assistant
+# ```
+#
+# With `prefill="Sure! Here"` it is the same string with the prefill after the assistant marker:
+#
+# ```
+# <|im_start|>system
+# You are a helpful assistant.<|im_end|>
+# <|im_start|>user
+# Say hello.<|im_end|>
+# <|im_start|>assistant
+# Sure! Here
+# ```
+#
+# The turn is still open: there is no `<|im_end|>` after the prefill. That is what lets the model
+# carry on from "Sure! Here" as if it had written it.
 
 
 # %%
 @exercise
 def assistant_prefill(tokenizer, system: str, user: str, prefill: str) -> str:
-    """Render a two-turn chat with `prefill` already written into the assistant's turn.
+    """Render a chat with a system message and a user message (each a
+    `{"role": ..., "content": ...}` dict), and `prefill` already written into the assistant's turn.
 
     The result is the exact string the model continues from, so `prefill` has to be the last
     thing in it, with the assistant turn still open. A prefill rendered as a completed
     assistant message closes the turn, and the model starts a new one instead of continuing.
 
-    `prefill=""` must give the ordinary prompt, unchanged.
+    `prefill=""` must give the ordinary prompt, unchanged: the same chat with the assistant
+    turn opened (`add_generation_prompt=True`) and nothing written in it.
     """
     rendered = tokenizer.apply_chat_template(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -342,8 +369,8 @@ for prefill in case["prefills"]:
     print(f"prefill {prefill!r:34}  refusal {mean_logprob:+.3f} logprob/token")
 
 # %% [markdown]
-# With nothing prefilled, the refusal is the model's most likely opening: left to itself, it
-# declines. Watch what a few forced tokens do to that same refusal's probability.
+# With nothing prefilled, this is the reply the model gives: the generation cell below confirms
+# it refuses. Watch what a few forced tokens do to that same refusal's probability.
 #
 # The reason it drops is the mechanism from the start of the lab. A model only ever predicts a
 # likely continuation of the text in front of it. Once "Sure! Here" is sitting in the assistant
