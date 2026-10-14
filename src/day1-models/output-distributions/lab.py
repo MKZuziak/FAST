@@ -282,14 +282,27 @@ print(f"greedy (argmax) always gives: {tokenizer.decode([int(probs.argmax())])!r
 # eval scores each option and takes the highest, which is what Part 3 does. Tomorrow's lab uses the
 # same scorer to measure which of two replies a model prefers. You write it once here and reuse it.
 #
-# The mechanics: run the prompt and completion through together, and at each position read off the
-# [log probability](https://en.wikipedia.org/wiki/Log_probability) the model gave the token that
-# actually came next (the log of its softmax probability, so a negative number, and adding logs is
-# the same as multiplying probabilities). Sum those over the completion's tokens only. Position
-# *i*'s logits predict token *i+1*, so an off-by-one is the classic bug here. The check will catch
-# it.
+# The mechanics: run the prompt and the completion through the model *together*, as one sequence
+# of N tokens, and keep the logits at *every* position, not only the last one as in Part 1. Row *i*
+# holds the model's prediction for token *i+1*. So nothing predicts the first token, and the last
+# row predicts a token beyond the string. Drop those two and the rows and the target tokens pair up
+# one to one, row *i* with the token at *i+1*, with no further shift. An off-by-one here is the
+# classic bug, and the check will catch it.
 #
-# The shapes the scorer moves through, before you write it:
+# For each pair you want one number: the
+# [log probability](https://en.wikipedia.org/wiki/Log_probability) of the token that really came
+# next. Turn each row into a distribution over the vocabulary (softmax, per row), pick the entry of
+# the actual next token, and take its log. Add up those log-probabilities. Don't add up the raw
+# logits, which are unnormalised scores, or the probabilities themselves: the probability of a
+# string is the *product* of its token probabilities, and the log of a product is a sum.
+# `torch.log_softmax` does the softmax and the log in one stable step. Keep only the terms that
+# belong to the completion.
+#
+# Tokenise the prompt and the completion separately and join the ids, as the demo below does: the
+# completion without special tokens, and with its leading space, since `" Paris"` and `"Paris"` are
+# different tokens.
+#
+# The shapes the scorer moves through, before you write it (N tokens in, N rows of logits out):
 
 # %%
 p_ids = tokenizer("The capital of France is", return_tensors="pt").input_ids
