@@ -475,11 +475,19 @@ print(f"\naccuracy: {correct}/{len(items)}")
 # %% [markdown]
 # ## What you built
 #
-# You now have three ways to look at a model's output distribution. Softmax with temperature turns
-# logits into probabilities and sets how peaked they are. Entropy measures how spread out they are.
-# Scoring reads off the probability of a specific string. The Part 3 evaluator is the scorer
-# run in a loop and checked against known answers, which is the core of what a benchmark number
-# measures.
+# You now have five tools for working with a model's output distribution:
+#
+# | Tool | Takes | Gives | Formula | What it tells you |
+# | --- | --- | --- | --- | --- |
+# | `next_token_probs` | logits $z$, temperature $T$ | distribution over the vocabulary | $\mathrm{softmax}(z/T)$ | what the model would say next, and how peaked it is ($T<1$ sharpens, $T>1$ flattens) |
+# | `entropy_bits` | a distribution $p$ | one number, in bits | $-\sum_i p_i \log_2 p_i$ | how spread out it is: $2^H$ equally likely tokens |
+# | `top_p_filter` | a distribution $p$, threshold | a smaller distribution | keep the smallest top set with mass $\ge p$, renormalise | which tokens sampling is allowed to pick |
+# | `sequence_logprob` | a prompt and a completion | one number, in nats | $\sum_{j} \log P(y_j \mid x, y_{<j})$ | how likely the model found exactly that string |
+# | `score_choices` | a question and its choices | one number per choice | $\frac{1}{\lvert c\rvert}\sum_{j} \log P(c_j \mid x, c_{<j})$ | which choice the model finds most likely, whatever its length |
+#
+# Run the Part 3 evaluator over questions whose answers you know and count how often the model's
+# pick is right: that is the core of what many benchmark numbers measure, though real harnesses
+# differ in prompt format and in how they normalise for length.
 #
 # Two things worth keeping. First, when a system card reports something like 74% on a benchmark,
 # you know the operation behind that number and some of the ways it can be shaped: how the answer
