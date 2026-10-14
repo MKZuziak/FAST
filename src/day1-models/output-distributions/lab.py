@@ -435,6 +435,12 @@ for answer in (" Paris", " Lyon", " Bangkok"):
 # Score each answer with the per-token average from Part 2, not the raw total. The candidate
 # answers have different lengths, and as we just saw, a raw sum would quietly favour the shortest
 # one whether or not it's correct.
+#
+# $$
+# \text{score}(c) = \frac{1}{|c|}\sum_{j=1}^{|c|} \log P\big(c_j \mid \text{question}, c_{<j}\big), \qquad \text{pick } \arg\max_c\ \text{score}(c)
+# $$
+#
+# where $|c|$ is the number of tokens in the choice, counted the way Part 2 tokenises a completion.
 
 
 # %%
