@@ -345,6 +345,73 @@ for answer in (" Paris", " Lyon", " Bangkok"):
     print(f"{sequence_logprob(model, tokenizer, prompt, answer):8.3f}   {answer!r}")
 
 # %% [markdown]
+# <details>
+# <summary>For those who want to know more: the maths of scoring a string</summary>
+#
+# **Setup.** Let the prompt be tokens $x_1, \dots, x_m$ and the completion $y_1, \dots, y_k$. Write the concatenation as one sequence $s_1, \dots, s_N$ with $N = m + k$, so $s_{m+j} = y_j$. The model is a function that maps the first $t$ tokens to a distribution over the next one:
+#
+# $$
+# q_t(v) \;=\; P(s_{t+1} = v \mid s_1, \dots, s_t) \;=\; \mathrm{softmax}(z_t)_v
+# $$
+#
+# Here $z_t \in \mathbb{R}^V$ is the logit vector at position $t$. One forward pass gives you all of $z_1, \dots, z_N$ at once, because each position only sees the tokens before it.
+#
+# **What we score.** The probability the model assigns to the completion, given the prompt, is by the chain rule:
+#
+# $$
+# P(y_1, \dots, y_k \mid x) \;=\; \prod_{j=1}^{k} P(y_j \mid x, y_1, \dots, y_{j-1}) \;=\; \prod_{j=1}^{k} q_{m+j-1}\big(s_{m+j}\big)
+# $$
+#
+# Each factor is the entry of one row's distribution, picked at the token that actually followed. The index $m + j - 1$ is the shift by one: the token at position $m + j$ is predicted by the row at position $m + j - 1$.
+#
+# **Why the log.** A product of $k$ numbers below 1 shrinks quickly and underflows in floating point. Take the log and the product becomes a sum:
+#
+# $$
+# \log P(y \mid x) \;=\; \sum_{j=1}^{k} \log q_{m+j-1}\big(s_{m+j}\big)
+# $$
+#
+# The result is in nats (natural log), is $\le 0$, and equals 0 only if every token had probability 1.
+#
+# **Why log-softmax and not softmax-then-log.** Since $\log \mathrm{softmax}(z)_v = z_v - \log \sum_u e^{z_u}$, you can compute the log-probability directly from the logits, with the log-sum-exp done in a stable way. Taking `softmax` first and then `log` can produce $\log 0 = -\infty$ for tokens whose probability underflows.
+#
+# **Which things are *not* the score.** The sum of the raw logits $\sum_j z_{m+j-1}[s_{m+j}]$ is not a probability and is not invariant to shifting a row by a constant, so it means nothing. The sum of the probabilities $\sum_j q(\cdot)$ is also wrong: independent factors multiply, they don't add.
+#
+# **In the code.** In array terms, once you drop the last row of logits and the first token:
+#
+# - `logprobs[i]` is $\log q_{i+1}$, a vector over the vocabulary, for $i = 0, \dots, N-2$.
+# - `targets[i]` is $s_{i+2}$, the token that row is meant to predict.
+# - `gather` picks `logprobs[i, targets[i]]` for every $i$ at once.
+# - The completion's terms are the last $k$ of those $N - 1$ entries, which are the ones from index $m - 1$ onward.
+#
+# The maths numbers positions from 1 and the arrays count from 0, which is why the indices above are shifted by one. With $m = 5$ and $k = 1$, so $N = 6$, there are 5 entries, indexed 0 to 4, and the completion's term is the one at index 4.
+#
+# **Per-token average.** Write $\ell_j = \log q_{m+j-1}(s_{m+j})$ for the $j$-th term of the completion. The raw total and the per-token average are
+#
+# $$
+# S_{\text{total}} = \sum_{j=1}^{k} \ell_j \qquad\qquad S_{\text{mean}} = \frac{1}{k}\sum_{j=1}^{k} \ell_j
+# $$
+#
+# Part 3 uses $S_{\text{mean}}$. Every $\ell_j \le 0$, so $S_{\text{total}}$ falls as $k$ grows even if each token is equally good. Take two answers whose tokens all have $\ell_j = -1$, after a prompt of $m = 11$ tokens (a typical short question):
+#
+# | Answer | $k$ | $S_{\text{total}}$ | $S_{\text{mean}}$ (divide by $k$) | divide by $m + k$ |
+# | --- | --- | --- | --- | --- |
+# | Short | 1 | $-1$ | $-1.00$ | $-0.08$ |
+# | Long | 5 | $-5$ | $-1.00$ | $-0.31$ |
+#
+# Dividing by $k$ scores them the same, as it should. Dividing by $m + k$ divides by terms that were never added, and still makes the longer answer look about four times worse. The divisor is the number of terms in the sum.
+#
+# The quantity $-S_{\text{mean}}$ is the *cross-entropy* between the model and the completion, and $\exp(-S_{\text{mean}})$ is the completion's *perplexity*. It is the same idea as $2^{H}$ in the entropy section, the effective number of equally likely tokens the model was choosing between at each step, with the average surprisal of this text in place of $H$ and in nats instead of bits. A lower perplexity means the model found the text less surprising.
+#
+# **Mistakes to watch for.**
+#
+# 1. **Off-by-one in the shift:** pairing row $t$ with the token at position $t$ instead of $t+1$. This scores each token against the wrong prediction.
+# 2. **Scoring the prompt:** including the terms for $x_1, \dots, x_m$. The prompt is what you condition on, so it should not be in the sum.
+# 3. **Summing logits or probabilities** instead of log-probabilities.
+# 4. **Tokenising the completion with special tokens**, or without its leading space, so that the boundary doesn't match what the model would see.
+#
+# </details>
+
+# %% [markdown]
 # Usually what you want is the gap between two scores, since it tells you which continuation the
 # model finds more likely and by how much. One thing to watch before you rely on it. Log
 # probabilities are always negative, so every extra token pushes the total further down, and a
