@@ -171,6 +171,42 @@ for prompt in (
 
 
 # %% [markdown]
+# <details>
+# <summary>For those who want to know more: Shannon entropy</summary>
+#
+# **Surprisal.** An event of probability $p$ carries $-\log_2 p$ bits of surprisal: a certain event ($p = 1$) carries 0, a fair coin flip ($p = 1/2$) carries 1 bit, and rarer events carry more. The logarithm is there because surprisal should add for independent events: $-\log_2(pq) = -\log_2 p - \log_2 q$. It is the same reason Part 2 sums log-probabilities along a string.
+#
+# **Entropy** is the *expected* surprisal when the outcome is drawn from the distribution itself:
+#
+# $$
+# H(p) \;=\; -\sum_{i} p_i \log_2 p_i \;=\; \mathbb{E}_{i \sim p}\big[-\log_2 p_i\big]
+# $$
+#
+# Three properties follow directly:
+#
+# - $H(p) \ge 0$, with equality exactly when one token holds all the probability.
+# - Over $n$ tokens, $H(p) \le \log_2 n$, with equality exactly when the distribution is uniform.
+# - It depends only on the *shape* of the distribution: shuffling the tokens, or relabelling them, changes nothing.
+#
+# **Reading a value in bits.** The quantity $2^{H}$ (the *perplexity*) is the number of equally likely tokens that would be exactly as undecided. A distribution $[0.7, 0.2, 0.1]$ has $H \approx 1.157$ bits and $2^{H} \approx 2.23$: it is about as undecided as a choice among 2.2 equally likely tokens, even though three tokens have probability. A uniform distribution over 8 tokens has exactly 3 bits, and a fair coin has 1 bit.
+#
+# **Why zeros need care.** The term $0 \cdot \log 0$ is defined as 0, because $p \log p \to 0$ as $p \to 0$. In floating point, $\log_2 0 = -\infty$ and $0 \times (-\infty)$ is `nan`, so tokens with zero probability have to be skipped rather than passed through the formula.
+#
+# **Bits and nats.** Bits use $\log_2$; nats use the natural logarithm. One nat is $1/\ln 2 \approx 1.4427$ bits, so bits = nats / $\ln 2$. Most training losses, and the scores from Part 2, are in nats, so convert before comparing them with a value in bits.
+#
+# **Entropy and cross-entropy.** $H(p)$ is the expected surprisal when tokens really are drawn from $p$. When you instead score text that came from somewhere else with the model, as in Part 2, the average of $-\log q(\text{token})$ estimates the *cross-entropy* between the text and the model. This is what language-model training minimises, and it is never lower than the entropy of the source.
+#
+# **Mistakes to watch for.**
+#
+# 1. **Natural log instead of $\log_2$.** The result is in nats, about 0.69 times the value in bits. The check recognises this.
+# 2. **Letting zeros through.** `p * torch.log2(p)` with `p = 0` gives `nan`, which then poisons the whole sum.
+# 3. **Dropping the minus sign.** Every term $p \log_2 p$ is $\le 0$, so without the minus the entropy comes out negative.
+# 4. **Passing logits instead of probabilities.** Entropy needs a normalised distribution, so apply `next_token_probs` first.
+#
+# </details>
+
+
+# %% [markdown]
 # ### Exercise: top-p filtering
 #
 # Top-p sampling, also called nucleus sampling, keeps the smallest set of the most likely tokens
