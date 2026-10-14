@@ -87,6 +87,46 @@ for temperature in (0.5, 1.0, 2.0):
 
 
 # %% [markdown]
+# <details>
+# <summary>For those who want to know more: where the logits come from, softmax and temperature</summary>
+#
+# **What the model computes.** A language model reads the tokens $x_1, \dots, x_t$ and produces one logit per vocabulary token, $z_1, \dots, z_V$. Softmax turns these into a distribution over the *next* token:
+#
+# $$
+# P(x_{t+1} = i \mid x_1, \dots, x_t) \;=\; \mathrm{softmax}(z)_i \;=\; \frac{e^{z_i}}{\sum_{j=1}^{V} e^{z_j}}
+# $$
+#
+# The vector comes from the last position only: the model's opinion about what follows everything it has read. Generating text means repeating this: pick a token from the distribution, append it, run the model again. Part 2 reads the same distribution at *every* position of a given string, to ask how likely the model found each token that was actually there.
+#
+# **Why exponentiate.** Logits can be any real number, and probabilities must be positive and sum to 1. $e^{z}$ is always positive, and dividing by the total makes the sum 1. Only differences matter: adding the same constant to every logit leaves the result unchanged, because $e^{c}$ cancels from the top and bottom.
+#
+# **Temperature** divides the logits before softmax:
+#
+# $$
+# \mathrm{softmax}(z / T)_i \;=\; \frac{e^{z_i / T}}{\sum_j e^{z_j / T}}
+# $$
+#
+# For $T < 1$ the gaps between logits grow, so the top token takes more of the mass. For $T > 1$ the gaps shrink and the distribution flattens. As $T \to 0$ it approaches always picking the top token, and as $T \to \infty$ it approaches uniform. With logits $[2, 1, 0, -1]$:
+#
+# | $T$ | probabilities |
+# | --- | --- |
+# | 0.5 | 0.865, 0.117, 0.016, 0.002 |
+# | 1 | 0.644, 0.237, 0.087, 0.032 |
+# | 2 | 0.455, 0.276, 0.167, 0.102 |
+#
+# **Subtracting the maximum.** Since only differences matter, you can subtract $\max_j z_j$ from every logit first. The largest exponent is then $e^0 = 1$, so nothing overflows, and the result is identical. `torch.softmax` does this for you.
+#
+# **Mistakes to watch for.**
+#
+# 1. **Dividing the probabilities by $T$** instead of the logits. For the logits above, the result sums to 2.0 at $T = 0.5$ and 0.5 at $T = 2$, so it is not a distribution. Temperature has to act *before* the normalisation.
+# 2. **Normalising before dividing**, or dividing the output of softmax by anything at all, for the same reason.
+# 3. **Using `exp` directly on raw logits.** Large logits overflow to infinity, and `inf / inf` is `nan`. Subtract the maximum first, or use `torch.softmax`.
+# 4. **Softmax over the wrong axis.** The normalisation runs over the vocabulary. `dim=-1` is that axis for a single vector, as here, and for a `(positions, vocab)` tensor, as in Part 2.
+#
+# </details>
+
+
+# %% [markdown]
 # ### Exercise (optional): how sure is it?
 #
 # Nothing later in the lab depends on this one, so skip it if you're short on time and come back
