@@ -87,6 +87,46 @@ for temperature in (0.5, 1.0, 2.0):
 
 
 # %% [markdown]
+# <details>
+# <summary>For those who want to know more: where the logits come from, softmax and temperature</summary>
+#
+# **What the model computes.** A language model reads the tokens $x_1, \dots, x_t$ and produces one logit per vocabulary token, $z_1, \dots, z_V$. Softmax turns these into a distribution over the *next* token:
+#
+# $$
+# P(x_{t+1} = i \mid x_1, \dots, x_t) \;=\; \mathrm{softmax}(z)_i \;=\; \frac{e^{z_i}}{\sum_{j=1}^{V} e^{z_j}}
+# $$
+#
+# The vector comes from the last position only: the model's opinion about what follows everything it has read. Generating text means repeating this: pick a token from the distribution, append it, run the model again. Part 2 reads the same distribution at *every* position of a given string, to ask how likely the model found each token that was actually there.
+#
+# **Why exponentiate.** Logits can be any real number, and probabilities must be positive and sum to 1. $e^{z}$ is always positive, and dividing by the total makes the sum 1. Only differences matter: adding the same constant to every logit leaves the result unchanged, because $e^{c}$ cancels from the top and bottom.
+#
+# **Temperature** divides the logits before softmax:
+#
+# $$
+# \mathrm{softmax}(z / T)_i \;=\; \frac{e^{z_i / T}}{\sum_j e^{z_j / T}}
+# $$
+#
+# For $T < 1$ the gaps between logits grow, so the top token takes more of the mass. For $T > 1$ the gaps shrink and the distribution flattens. As $T \to 0$ it approaches always picking the top token, and as $T \to \infty$ it approaches uniform. With logits $[2, 1, 0, -1]$:
+#
+# | $T$ | probabilities |
+# | --- | --- |
+# | 0.5 | 0.865, 0.117, 0.016, 0.002 |
+# | 1 | 0.644, 0.237, 0.087, 0.032 |
+# | 2 | 0.455, 0.276, 0.167, 0.102 |
+#
+# **Subtracting the maximum.** Since only differences matter, you can subtract $\max_j z_j$ from every logit first. The largest exponent is then $e^0 = 1$, so nothing overflows, and the result is identical. `torch.softmax` does this for you.
+#
+# **Mistakes to watch for.**
+#
+# 1. **Dividing the probabilities by $T$** instead of the logits. For the logits above, the result sums to 2.0 at $T = 0.5$ and 0.5 at $T = 2$, so it is not a distribution. Temperature has to act *before* the normalisation.
+# 2. **Normalising before dividing**, or dividing the output of softmax by anything at all, for the same reason.
+# 3. **Using `exp` directly on raw logits.** Large logits overflow to infinity, and `inf / inf` is `nan`. Subtract the maximum first, or use `torch.softmax`.
+# 4. **Softmax over the wrong axis.** The normalisation runs over the vocabulary. `dim=-1` is that axis for a single vector, as here, and for a `(positions, vocab)` tensor, as in Part 2.
+#
+# </details>
+
+
+# %% [markdown]
 # ### Exercise (optional): how sure is it?
 #
 # Nothing later in the lab depends on this one, so skip it if you're short on time and come back
@@ -128,6 +168,42 @@ for prompt in (
 ):
     probs = next_token_probs(lab.logits_for(model, tokenizer, prompt))
     print(f"{entropy_bits(probs):5.2f} bits   {prompt!r}")
+
+
+# %% [markdown]
+# <details>
+# <summary>For those who want to know more: Shannon entropy</summary>
+#
+# **Surprisal.** An event of probability $p$ carries $-\log_2 p$ bits of surprisal: a certain event ($p = 1$) carries 0, a fair coin flip ($p = 1/2$) carries 1 bit, and rarer events carry more. The logarithm is there because surprisal should add for independent events: $-\log_2(pq) = -\log_2 p - \log_2 q$. It is the same reason Part 2 sums log-probabilities along a string.
+#
+# **Entropy** is the *expected* surprisal when the outcome is drawn from the distribution itself:
+#
+# $$
+# H(p) \;=\; -\sum_{i} p_i \log_2 p_i \;=\; \mathbb{E}_{i \sim p}\big[-\log_2 p_i\big]
+# $$
+#
+# Three properties follow directly:
+#
+# - $H(p) \ge 0$, with equality exactly when one token holds all the probability.
+# - Over $n$ tokens, $H(p) \le \log_2 n$, with equality exactly when the distribution is uniform.
+# - It depends only on the *shape* of the distribution: shuffling the tokens, or relabelling them, changes nothing.
+#
+# **Reading a value in bits.** The quantity $2^{H}$ (the *perplexity*) is the number of equally likely tokens that would be exactly as undecided. A distribution $[0.7, 0.2, 0.1]$ has $H \approx 1.157$ bits and $2^{H} \approx 2.23$: it is about as undecided as a choice among 2.2 equally likely tokens, even though three tokens have probability. A uniform distribution over 8 tokens has exactly 3 bits, and a fair coin has 1 bit.
+#
+# **Why zeros need care.** The term $0 \cdot \log 0$ is defined as 0, because $p \log p \to 0$ as $p \to 0$. In floating point, $\log_2 0 = -\infty$ and $0 \times (-\infty)$ is `nan`, so tokens with zero probability have to be skipped rather than passed through the formula.
+#
+# **Bits and nats.** Bits use $\log_2$; nats use the natural logarithm. One nat is $1/\ln 2 \approx 1.4427$ bits, so bits = nats / $\ln 2$. Most training losses, and the scores from Part 2, are in nats, so convert before comparing them with a value in bits.
+#
+# **Entropy and cross-entropy.** $H(p)$ is the expected surprisal when tokens really are drawn from $p$. When you instead score text that came from somewhere else with the model, as in Part 2, the average of $-\log q(\text{token})$ estimates the *cross-entropy* between the text and the model. This is what language-model training minimises, and it is never lower than the entropy of the source.
+#
+# **Mistakes to watch for.**
+#
+# 1. **Natural log instead of $\log_2$.** The result is in nats, about 0.69 times the value in bits. The check recognises this.
+# 2. **Letting zeros through.** `p * torch.log2(p)` with `p = 0` gives `nan`, which then poisons the whole sum.
+# 3. **Dropping the minus sign.** Every term $p \log_2 p$ is $\le 0$, so without the minus the entropy comes out negative.
+# 4. **Passing logits instead of probabilities.** Entropy needs a normalised distribution, so apply `next_token_probs` first.
+#
+# </details>
 
 
 # %% [markdown]
@@ -206,14 +282,27 @@ print(f"greedy (argmax) always gives: {tokenizer.decode([int(probs.argmax())])!r
 # eval scores each option and takes the highest, which is what Part 3 does. Tomorrow's lab uses the
 # same scorer to measure which of two replies a model prefers. You write it once here and reuse it.
 #
-# The mechanics: run the prompt and completion through together, and at each position read off the
-# [log probability](https://en.wikipedia.org/wiki/Log_probability) the model gave the token that
-# actually came next (the log of its softmax probability, so a negative number, and adding logs is
-# the same as multiplying probabilities). Sum those over the completion's tokens only. Position
-# *i*'s logits predict token *i+1*, so an off-by-one is the classic bug here. The check will catch
-# it.
+# The mechanics: run the prompt and the completion through the model *together*, as one sequence
+# of N tokens, and keep the logits at *every* position, not only the last one as in Part 1. Row *i*
+# holds the model's prediction for token *i+1*. So nothing predicts the first token, and the last
+# row predicts a token beyond the string. Drop those two and the rows and the target tokens pair up
+# one to one, row *i* with the token at *i+1*, with no further shift. An off-by-one here is the
+# classic bug, and the check will catch it.
 #
-# The shapes the scorer moves through, before you write it:
+# For each pair you want one number: the
+# [log probability](https://en.wikipedia.org/wiki/Log_probability) of the token that really came
+# next. Turn each row into a distribution over the vocabulary (softmax, per row), pick the entry of
+# the actual next token, and take its log. Add up those log-probabilities. Don't add up the raw
+# logits, which are unnormalised scores, or the probabilities themselves: the probability of a
+# string is the *product* of its token probabilities, and the log of a product is a sum.
+# `torch.log_softmax` does the softmax and the log in one stable step. Keep only the terms that
+# belong to the completion.
+#
+# Tokenise the prompt and the completion separately and join the ids, as the demo below does: the
+# completion without special tokens, and with its leading space, since `" Paris"` and `"Paris"` are
+# different tokens.
+#
+# The shapes the scorer moves through, before you write it (N tokens in, N rows of logits out):
 
 # %%
 p_ids = tokenizer("The capital of France is", return_tensors="pt").input_ids
@@ -256,6 +345,73 @@ for answer in (" Paris", " Lyon", " Bangkok"):
     print(f"{sequence_logprob(model, tokenizer, prompt, answer):8.3f}   {answer!r}")
 
 # %% [markdown]
+# <details>
+# <summary>For those who want to know more: the maths of scoring a string</summary>
+#
+# **Setup.** Let the prompt be tokens $x_1, \dots, x_m$ and the completion $y_1, \dots, y_k$. Write the concatenation as one sequence $s_1, \dots, s_N$ with $N = m + k$, so $s_{m+j} = y_j$. The model is a function that maps the first $t$ tokens to a distribution over the next one:
+#
+# $$
+# q_t(v) \;=\; P(s_{t+1} = v \mid s_1, \dots, s_t) \;=\; \mathrm{softmax}(z_t)_v
+# $$
+#
+# Here $z_t \in \mathbb{R}^V$ is the logit vector at position $t$. One forward pass gives you all of $z_1, \dots, z_N$ at once, because each position only sees the tokens before it.
+#
+# **What we score.** The probability the model assigns to the completion, given the prompt, is by the chain rule:
+#
+# $$
+# P(y_1, \dots, y_k \mid x) \;=\; \prod_{j=1}^{k} P(y_j \mid x, y_1, \dots, y_{j-1}) \;=\; \prod_{j=1}^{k} q_{m+j-1}\big(s_{m+j}\big)
+# $$
+#
+# Each factor is the entry of one row's distribution, picked at the token that actually followed. The index $m + j - 1$ is the shift by one: the token at position $m + j$ is predicted by the row at position $m + j - 1$.
+#
+# **Why the log.** A product of $k$ numbers below 1 shrinks quickly and underflows in floating point. Take the log and the product becomes a sum:
+#
+# $$
+# \log P(y \mid x) \;=\; \sum_{j=1}^{k} \log q_{m+j-1}\big(s_{m+j}\big)
+# $$
+#
+# The result is in nats (natural log), is $\le 0$, and equals 0 only if every token had probability 1.
+#
+# **Why log-softmax and not softmax-then-log.** Since $\log \mathrm{softmax}(z)_v = z_v - \log \sum_u e^{z_u}$, you can compute the log-probability directly from the logits, with the log-sum-exp done in a stable way. Taking `softmax` first and then `log` can produce $\log 0 = -\infty$ for tokens whose probability underflows.
+#
+# **Which things are *not* the score.** The sum of the raw logits $\sum_j z_{m+j-1}[s_{m+j}]$ is not a probability and is not invariant to shifting a row by a constant, so it means nothing. The sum of the probabilities $\sum_j q(\cdot)$ is also wrong: independent factors multiply, they don't add.
+#
+# **In the code.** In array terms, once you drop the last row of logits and the first token:
+#
+# - `logprobs[i]` is $\log q_{i+1}$, a vector over the vocabulary, for $i = 0, \dots, N-2$.
+# - `targets[i]` is $s_{i+2}$, the token that row is meant to predict.
+# - `gather` picks `logprobs[i, targets[i]]` for every $i$ at once.
+# - The completion's terms are the last $k$ of those $N - 1$ entries, which are the ones from index $m - 1$ onward.
+#
+# The maths numbers positions from 1 and the arrays count from 0, which is why the indices above are shifted by one. With $m = 5$ and $k = 1$, so $N = 6$, there are 5 entries, indexed 0 to 4, and the completion's term is the one at index 4.
+#
+# **Per-token average.** Write $\ell_j = \log q_{m+j-1}(s_{m+j})$ for the $j$-th term of the completion. The raw total and the per-token average are
+#
+# $$
+# S_{\text{total}} = \sum_{j=1}^{k} \ell_j \qquad\qquad S_{\text{mean}} = \frac{1}{k}\sum_{j=1}^{k} \ell_j
+# $$
+#
+# Part 3 uses $S_{\text{mean}}$. Every $\ell_j \le 0$, so $S_{\text{total}}$ falls as $k$ grows even if each token is equally good. Take two answers whose tokens all have $\ell_j = -1$, after a prompt of $m = 11$ tokens (a typical short question):
+#
+# | Answer | $k$ | $S_{\text{total}}$ | $S_{\text{mean}}$ (divide by $k$) | divide by $m + k$ |
+# | --- | --- | --- | --- | --- |
+# | Short | 1 | $-1$ | $-1.00$ | $-0.08$ |
+# | Long | 5 | $-5$ | $-1.00$ | $-0.31$ |
+#
+# Dividing by $k$ scores them the same, as it should. Dividing by $m + k$ divides by terms that were never added, and still makes the longer answer look about four times worse. The divisor is the number of terms in the sum.
+#
+# The quantity $-S_{\text{mean}}$ is the *cross-entropy* between the model and the completion, and $\exp(-S_{\text{mean}})$ is the completion's *perplexity*. It is the same idea as $2^{H}$ in the entropy section, the effective number of equally likely tokens the model was choosing between at each step, with the average surprisal of this text in place of $H$ and in nats instead of bits. A lower perplexity means the model found the text less surprising.
+#
+# **Mistakes to watch for.**
+#
+# 1. **Off-by-one in the shift:** pairing row $t$ with the token at position $t$ instead of $t+1$. This scores each token against the wrong prediction.
+# 2. **Scoring the prompt:** including the terms for $x_1, \dots, x_m$. The prompt is what you condition on, so it should not be in the sum.
+# 3. **Summing logits or probabilities** instead of log-probabilities.
+# 4. **Tokenising the completion with special tokens**, or without its leading space, so that the boundary doesn't match what the model would see.
+#
+# </details>
+
+# %% [markdown]
 # Usually what you want is the gap between two scores, since it tells you which continuation the
 # model finds more likely and by how much. One thing to watch before you rely on it. Log
 # probabilities are always negative, so every extra token pushes the total further down, and a
@@ -279,6 +435,12 @@ for answer in (" Paris", " Lyon", " Bangkok"):
 # Score each answer with the per-token average from Part 2, not the raw total. The candidate
 # answers have different lengths, and as we just saw, a raw sum would quietly favour the shortest
 # one whether or not it's correct.
+#
+# $$
+# \text{score}(c) = \frac{1}{|c|}\sum_{j=1}^{|c|} \log P\big(c_j \mid \text{question}, c_{<j}\big), \qquad \text{pick } \arg\max_c\ \text{score}(c)
+# $$
+#
+# where $|c|$ is the number of tokens in the choice, counted the way Part 2 tokenises a completion.
 
 
 # %%
@@ -313,11 +475,19 @@ print(f"\naccuracy: {correct}/{len(items)}")
 # %% [markdown]
 # ## What you built
 #
-# You now have three ways to look at a model's output distribution. Softmax with temperature turns
-# logits into probabilities and sets how peaked they are. Entropy measures how spread out they are.
-# Scoring reads off the probability of a specific string. The Part 3 evaluator is the scorer
-# run in a loop and checked against known answers, which is the core of what a benchmark number
-# measures.
+# You now have five tools for working with a model's output distribution:
+#
+# | Tool | Takes | Gives | Formula | What it tells you |
+# | --- | --- | --- | --- | --- |
+# | `next_token_probs` | logits $z$, temperature $T$ | distribution over the vocabulary | $\mathrm{softmax}(z/T)$ | what the model would say next, and how peaked it is ($T<1$ sharpens, $T>1$ flattens) |
+# | `entropy_bits` | a distribution $p$ | one number, in bits | $-\sum_i p_i \log_2 p_i$ | how spread out it is: $2^H$ equally likely tokens |
+# | `top_p_filter` | a distribution $p$, threshold | a smaller distribution | keep the smallest top set with mass $\ge p$, renormalise | which tokens sampling is allowed to pick |
+# | `sequence_logprob` | a prompt and a completion | one number, in nats | $\sum_{j} \log P(y_j \mid x, y_{<j})$ | how likely the model found exactly that string |
+# | `score_choices` | a question and its choices | one number per choice | $\frac{1}{\lvert c\rvert}\sum_{j} \log P(c_j \mid x, c_{<j})$ | which choice the model finds most likely, whatever its length |
+#
+# Run the Part 3 evaluator over questions whose answers you know and count how often the model's
+# pick is right: that is the core of what many benchmark numbers measure, though real harnesses
+# differ in prompt format and in how they normalise for length.
 #
 # Two things worth keeping. First, when a system card reports something like 74% on a benchmark,
 # you know the operation behind that number and some of the ways it can be shaped: how the answer
