@@ -109,6 +109,9 @@ bert = lab.FineTuned().fit(train["prompt"], train["harmful"])
 def threshold_at_fpr(benign_scores: np.ndarray, max_fpr: float) -> float:
     """Return the lowest threshold that flags at most `max_fpr` of `benign_scores`.
 
+    `benign_scores` are the scores of benign prompts only (no harmful ones, no labels), and `max_fpr`
+    is the largest fraction of them that may be flagged.
+
     A prompt is flagged when `score >= threshold`. The threshold must keep the flagged fraction of
     benign scores within `max_fpr`, and be as low as possible while doing so (a lower threshold
     catches more). Ties matter: if several benign prompts share a score, they're all flagged or none
