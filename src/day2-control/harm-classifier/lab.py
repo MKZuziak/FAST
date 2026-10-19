@@ -188,7 +188,12 @@ lab.play_box(monitors, thresholds)
 
 # %%
 @exercise
-def evasion_rate(score_fn, prompts: list[str], transform: Callable[[str], str], threshold: float) -> float:
+def evasion_rate(
+    score_fn: Callable[[list[str]], np.ndarray],
+    prompts: list[str],
+    transform: Callable[[str], str],
+    threshold: float,
+) -> float:
     """Fraction of caught prompts that slip under `threshold` once `transform` is applied.
 
     `score_fn` takes a list of prompts and returns an array of scores; call it on whole lists, not
