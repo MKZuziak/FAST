@@ -81,6 +81,24 @@ bert = lab.FineTuned().fit(train["prompt"], train["harmful"])
 # catch rate that threshold gives. Set it on `val`, never on `test`, or the test numbers stop being
 # honest.
 #
+# **Convention.** A filter flags a prompt when its score is at least the threshold $t$. *Harmful* is
+# the positive class, because that is what the filter is trying to detect, and *benign* is the
+# negative class. So a false positive is a benign prompt that gets flagged:
+#
+# | | flagged ($s \ge t$) | not flagged ($s < t$) |
+# | --- | --- | --- |
+# | **harmful** (positive) | true positive | false negative |
+# | **benign** (negative) | false positive | true negative |
+#
+# $$
+# \mathrm{FPR}(t) = \frac{FP}{FP + TN} \qquad\qquad \mathrm{TPR}(t) = \frac{TP}{TP + FN}
+# $$
+#
+# `false flags` below is the FPR and `caught` is the TPR. Each rate is computed within one class, so
+# the false-positive rate depends only on how the filter scores *benign* prompts. That is why
+# Exercise 1 receives only benign scores. The harmful prompts matter afterwards, when you measure
+# what the chosen threshold catches.
+#
 # ### Exercise 1: threshold at a false-flag budget
 #
 # Implement the function from its docstring. The check below it tells you if you got it right.
