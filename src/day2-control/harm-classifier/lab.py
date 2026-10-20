@@ -81,6 +81,24 @@ bert = lab.FineTuned().fit(train["prompt"], train["harmful"])
 # catch rate that threshold gives. Set it on `val`, never on `test`, or the test numbers stop being
 # honest.
 #
+# **Convention.** A filter flags a prompt when its score is at least the threshold $t$. *Harmful* is
+# the positive class, because that is what the filter is trying to detect, and *benign* is the
+# negative class. So a false positive is a benign prompt that gets flagged:
+#
+# | | flagged ($s \ge t$) | not flagged ($s < t$) |
+# | --- | --- | --- |
+# | **harmful** (positive) | true positive | false negative |
+# | **benign** (negative) | false positive | true negative |
+#
+# $$
+# \mathrm{FPR}(t) = \frac{FP}{FP + TN} \qquad\qquad \mathrm{TPR}(t) = \frac{TP}{TP + FN}
+# $$
+#
+# `false flags` below is the FPR and `caught` is the TPR. Each rate is computed within one class, so
+# the false-positive rate depends only on how the filter scores *benign* prompts. That is why
+# Exercise 1 receives only benign scores. The harmful prompts matter afterwards, when you measure
+# what the chosen threshold catches.
+#
 # ### Exercise 1: threshold at a false-flag budget
 #
 # Implement the function from its docstring. The check below it tells you if you got it right.
@@ -90,6 +108,9 @@ bert = lab.FineTuned().fit(train["prompt"], train["harmful"])
 @exercise
 def threshold_at_fpr(benign_scores: np.ndarray, max_fpr: float) -> float:
     """Return the lowest threshold that flags at most `max_fpr` of `benign_scores`.
+
+    `benign_scores` are the scores of benign prompts only (no harmful ones, no labels), and `max_fpr`
+    is the largest fraction of them that may be flagged.
 
     A prompt is flagged when `score >= threshold`. The threshold must keep the flagged fraction of
     benign scores within `max_fpr`, and be as low as possible while doing so (a lower threshold
@@ -167,7 +188,12 @@ lab.play_box(monitors, thresholds)
 
 # %%
 @exercise
-def evasion_rate(score_fn, prompts: list[str], transform: Callable[[str], str], threshold: float) -> float:
+def evasion_rate(
+    score_fn: Callable[[list[str]], np.ndarray],
+    prompts: list[str],
+    transform: Callable[[str], str],
+    threshold: float,
+) -> float:
     """Fraction of caught prompts that slip under `threshold` once `transform` is applied.
 
     `score_fn` takes a list of prompts and returns an array of scores; call it on whole lists, not
